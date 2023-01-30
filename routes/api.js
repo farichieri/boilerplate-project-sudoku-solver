@@ -7,82 +7,67 @@ module.exports = function (app) {
 
   app.route('/api/check').post((req, res) => {
     const { puzzle, coordinate, value } = req.body;
-    const letterRegex = /[a-iA-I]/;
-    const numberRegex = /[1-9]/;
-    const puzzleRegex = /[^0-9.]/g;
-
-    const matches = (val, regex) => {
-      return regex.test(val);
-    };
-
-    const matchesPuzzle = (puzzle) => {
-      return matches(puzzle, puzzleRegex);
-    };
-
-    const matchesCoordinate = (coordinate) => {
-      const number = coordinate.split('')[1];
-      const match =
-        matches(letter, letterRegex) && matches(number, numberRegex);
-      return match && coordinate.length === 2;
-    };
-
-    const matchesValue = (value) => {
-      const number = value;
-      const match = matches(number, numberRegex);
-      return match && value.length === 1;
-    };
-
-    if (!puzzle || !coordinate || !value) {
-      return res.status(200).send({ error: 'Required field(s) missing' });
+    if (!puzzle || !coordinate | !value) {
+      return res.json({ error: 'Required field(s) missing' });
     }
 
-    if (puzzle.length !== 81) {
-      return res
-        .status(200)
-        .send({ error: 'Expected puzzle to be 81 characters long' });
+    if (!solver.checkLength(puzzle)) {
+      return res.json({ error: 'Expected puzzle to be 81 characters long' });
+    }
+    if (!solver.checkCharacters(puzzle)) {
+      return res.json({ error: 'Invalid characters in puzzle' });
     }
 
-    if (!matchesPuzzle(puzzle)) {
-      return res.status(200).send({ error: 'Invalid characters in puzzle' });
+    let validCoordinate = solver.checkCoordinate(coordinate);
+    let validValue = solver.checkValue(value);
+
+    if (!validCoordinate) {
+      return res.json({ error: 'Invalid coordinate' });
+    }
+    if (!validValue) {
+      return res.json({ error: 'Invalid value' });
     }
 
-    const letter = coordinate.split('')[0];
+    let row = coordinate.split('')[0];
+    let col = coordinate.split('')[1];
+    let validRow = solver.checkRowPlacement(puzzle, row, col, value);
+    let validCol = solver.checkColPlacement(puzzle, row, col, value);
+    let validReg = solver.checkRegPlacement(puzzle, row, col, value);
+    let conflicts = [];
 
-    if (!matchesCoordinate(coordinate)) {
-      return res.status(200).send({ error: 'Invalid coordinate' });
-    }
-
-    if (!matchesValue(value)) {
-      return res.status(200).send({ error: 'Invalid value' });
+    if (validRow && validCol && validReg) {
+      return res.json({ valid: true });
+    } else {
+      if (!validRow) {
+        conflicts.push('row');
+      }
+      if (!validCol) {
+        conflicts.push('column');
+      }
+      if (!validReg) {
+        conflicts.push('region');
+      }
+      return res.json({ valid: false, conflict: conflicts });
     }
   });
 
   app.route('/api/solve').post((req, res) => {
     const { puzzle } = req.body;
-
     if (!puzzle) {
-      return res.status(200).send({ error: 'Required field missing' });
+      return res.json({ error: 'Required field missing' });
+    }
+    if (!solver.checkLength(puzzle)) {
+      return res.json({ error: 'Expected puzzle to be 81 characters long' });
+    }
+    if (!solver.checkCharacters(puzzle)) {
+      return res.json({ error: 'Invalid characters in puzzle' });
     }
 
-    if (puzzle.length !== 81) {
-      return res
-        .status(200)
-        .send({ error: 'Expected puzzle to be 81 characters long' });
+    let solution = solver.solve(puzzle);
+    if (!solution) {
+      return res.json({ error: 'Puzzle cannot be solved' });
     }
 
-    const regex = /[^0-9.]/g;
-    const matches = !regex.test(puzzle);
-
-    if (matches !== true) {
-      return res.status(200).send({ error: 'Invalid characters in puzzle' });
-    }
-
-    const solution = solver.solve(puzzle);
-
-    if (solution) {
-      return res.status(200).send({ solution: solution });
-    } else if (!solution) {
-      return res.status(200).send({ error: 'Puzzle cannot be solved' });
-    }
+    res.json({ solution });
   });
 };
